@@ -1,44 +1,39 @@
 import express from 'express';
 import cors from 'cors';
-import bodyParser from 'body-parser';
-import { Pool } from 'pg';
+import multer from 'multer';
+import { pool } from '../backend/db';
 
 const app = express();
-const PORT = 3000;
+const port = 3000;
 
-const pool = new Pool({
-  user: 'TU_USUARIO_PG',
-  host: 'localhost',
-  database: 'tarea_db',
-  password: 'TU_CONTRASENA_PG',
-  port: 5432,
-});
-
+// Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: '10mb' }));
+app.use(express.json());
 
-app.post('/api/upload', async (req, res) => {
+// Multer configuración para recibir archivo en memoria
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+// Ruta para subir imagen
+app.post('/upload', upload.single('imagen'), async (req, res) => {
   try {
-    const { image, nombre } = req.body;
+    const file = req.file;
+    if (!file) return res.status(400).json({ msg: 'No se subió ningún archivo' });
 
-    if (!image) {
-      return res.status(400).json({ message: 'No se recibió la imagen' });
-    }
+    const nombre = req.body.nombre || 'Sin nombre';
 
-    const buffer = Buffer.from(image, 'base64');
+    // Guardar en MySQL
+    const query = 'INSERT INTO fotos (nombre, imagen) VALUES (?, ?)';
+    const [result] = await pool.query(query, [nombre, file.buffer]);
 
-    const result = await pool.query(
-      'INSERT INTO fotos (nombre, imagen) VALUES ($1, $2) RETURNING id',
-      [nombre || 'imagen_sin_nombre', buffer]
-    );
-
-    res.status(200).json({ message: 'Imagen guardada en BD', id: result.rows[0].id });
+    res.json({ msg: 'Imagen guardada correctamente', id: (result as any).insertId });
   } catch (error) {
-    console.error('Error al guardar imagen:', error);
-    res.status(500).json({ message: 'Error en el servidor' });
+    console.error(error);
+    res.status(500).json({ msg: 'Error en el servidor' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+// Iniciar servidor
+app.listen(port, () => {
+  console.log(`Servidor corriendo en http://localhost:${port}`);
 });
